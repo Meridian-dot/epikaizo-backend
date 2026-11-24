@@ -1,6 +1,6 @@
 # Epikaizo API contract
 
-Base URL: `http://localhost:4000` locally; the staging URL is added here once deployed.
+Base URL: `http://localhost:4000` locally; staging is `https://epikaizo-backend.onrender.com`.
 All requests and responses are JSON. Dates are `YYYY-MM-DD`, times are `HH:MM`, prices are Namibian dollars as numbers.
 
 **Status key:** Live = working now. Planned = shape agreed, not built yet. Build against the example JSON with mock data until it goes live.
