@@ -14,6 +14,11 @@ const EnvSchema = z.object({
   UPLOAD_DIR: z.string().default("uploads"),
   // The API address browsers use, for photo links. Default: http://localhost:PORT
   PUBLIC_API_URL: z.union([z.literal(""), z.string().url()]).optional(),
+  // Cloudinary account for photo storage, from the Cloudinary dashboard:
+  // cloudinary://<api_key>:<api_secret>@<cloud_name>
+  // Required on Render (its disk is wiped on every restart). Leave empty locally
+  // to keep photos in UPLOAD_DIR instead.
+  CLOUDINARY_URL: z.union([z.literal(""), z.string().startsWith("cloudinary://")]).optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
