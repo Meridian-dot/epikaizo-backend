@@ -9,6 +9,8 @@ export class HttpError extends Error {
     public status: number,
     public code: string,
     message: string,
+    // Optional per-field messages, e.g. { name: ["A room with this name already exists."] }
+    public fields?: Record<string, string[]>,
   ) {
     super(message);
   }
@@ -20,7 +22,7 @@ export const notFound: RequestHandler = (req, _res, next) => {
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof HttpError) {
-    res.status(err.status).json({ error: { code: err.code, message: err.message } });
+    res.status(err.status).json({ error: { code: err.code, message: err.message, fields: err.fields } });
     return;
   }
   if (err instanceof ZodError) {
