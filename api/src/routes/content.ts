@@ -1,15 +1,16 @@
 // Public page text (read-only).
-//   GET /content/:key -> title and body for "home", "about" or "contact".
+//   GET /content/:key -> title and body for "home", "about", "rooms", "restaurant", "events" or "contact".
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import { pageContent } from "../db/schema.js";
+import { CONTENT_KEYS } from "../lib/content.js";
 import { HttpError } from "../middleware/errors.js";
 
 export const contentRouter = Router();
 
-const KeyParams = z.object({ key: z.enum(["home", "about", "contact"]) });
+const KeyParams = z.object({ key: z.enum(CONTENT_KEYS) });
 
 contentRouter.get("/:key", async (req, res) => {
   const { key } = KeyParams.parse(req.params);

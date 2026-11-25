@@ -10,6 +10,10 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   // Comma-separated list of sites allowed to call the API, e.g. the Next.js app.
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  // Folder for uploaded photos (relative to api/). Not committed.
+  UPLOAD_DIR: z.string().default("uploads"),
+  // The API address browsers use, for photo links. Default: http://localhost:PORT
+  PUBLIC_API_URL: z.union([z.literal(""), z.string().url()]).optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

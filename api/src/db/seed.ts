@@ -3,9 +3,11 @@
 // WARNING: it empties the rooms, menu, content and bookings tables first.
 // Never run it against production. Replace the fake data with the client's
 // real content when Dev C has it (target: Sat 28 Nov).
+import bcrypt from "bcryptjs";
 import { sql } from "drizzle-orm";
 import { db, pool } from "./index.js";
 import {
+  adminUsers,
   amenities,
   menuCategories,
   menuItems,
@@ -13,14 +15,23 @@ import {
   photos,
   restaurantSettings,
   roomTypeAmenities,
+  roomSetups,
   roomTypes,
+  siteSettings,
 } from "./schema.js";
 import { env } from "../env.js";
+import { sectionsToBody, type PageSection } from "../lib/content.js";
+import { DEFAULT_SETTINGS } from "../lib/settings.js";
 
 if (env.NODE_ENV === "production") {
   console.error("Refusing to seed a production database.");
   process.exit(1);
 }
+
+// DEV-ONLY login for the dashboard. NOT a real secret: change it (or set
+// ADMIN_SEED_PASSWORD in .env) before anyone outside the team can reach the API.
+const DEV_ADMIN_USERNAME = "admin";
+const DEV_ADMIN_PASSWORD = process.env.ADMIN_SEED_PASSWORD || "epikaizo-dev-only";
 
 const placeholder = (text: string) => `https://placehold.co/1600x1067?text=${encodeURIComponent(text)}`;
 
@@ -30,7 +41,7 @@ async function seed() {
     await tx.execute(sql`
       truncate table room_bookings, table_bookings, blocked_dates, photos,
         room_type_amenities, amenities, room_types, menu_items, menu_categories,
-        page_content, restaurant_settings
+        page_content, restaurant_settings, room_setups, site_settings
       restart identity cascade
     `);
 
@@ -55,7 +66,7 @@ async function seed() {
           name: "Standard Double",
           slug: "standard-double",
           description: "A quiet double room with a queen-size bed. Placeholder text.",
-          pricePerNight: 850,
+          pricePerNight: 750, // = cheapest setup below
           maxGuests: 2,
           totalUnits: 4,
           sortOrder: 1,
@@ -80,6 +91,16 @@ async function seed() {
         },
       ])
       .returning();
+
+    // Setups and prices per room type (fake). room_types.price_per_night above
+    // matches the cheapest active setup, and max_guests the largest.
+    await tx.insert(roomSetups).values([
+      { roomTypeId: standard.id, name: "Single", maxGuests: 1, pricePerNight: 750, sortOrder: 1 },
+      { roomTypeId: standard.id, name: "Double", maxGuests: 2, pricePerNight: 850, sortOrder: 2 },
+      { roomTypeId: twin.id, name: "Twin", maxGuests: 2, pricePerNight: 950, sortOrder: 1 },
+      { roomTypeId: family.id, name: "Family (queen + two singles)", maxGuests: 4, pricePerNight: 1450, sortOrder: 1 },
+      { roomTypeId: family.id, name: "Group booking", maxGuests: 4, pricePerNight: 1450, onRequest: true, sortOrder: 2 },
+    ]);
 
     await tx.insert(roomTypeAmenities).values([
       ...[wifi, aircon, tv, ensuite, kettle, parking].map((a) => ({ roomTypeId: standard.id, amenityId: a.id })),
@@ -110,7 +131,7 @@ async function seed() {
     await tx.insert(menuItems).values([
       { categoryId: breakfast.id, name: "Full breakfast", description: "Eggs, bacon, sausage, toast. Placeholder.", price: 145, sortOrder: 1 },
       { categoryId: breakfast.id, name: "Yoghurt and granola", description: "Placeholder.", price: 85, dietaryTags: ["vegetarian"], sortOrder: 2 },
-      { categoryId: mains.id, name: "Grilled kapana platter", description: "Placeholder.", price: 165, sortOrder: 1 },
+      { categoryId: mains.id, name: "Grilled kapana platter", description: "Placeholder.", price: 165, sideOptions: ["Chips", "Pap"], sortOrder: 1 },
       { categoryId: mains.id, name: "Vegetable curry", description: "Placeholder.", price: 135, dietaryTags: ["vegetarian", "vegan"], sortOrder: 2 },
       { categoryId: mains.id, name: "Oryx steak", description: "Placeholder.", price: 245, isAvailable: false, sortOrder: 3 },
       { categoryId: drinks.id, name: "Fresh juice", description: "Placeholder.", price: 45, sortOrder: 1 },
@@ -126,15 +147,37 @@ async function seed() {
       maxCoversPerSlot: 20,
     });
 
-    // --- Page text (fake) ---
+    // --- Page text (fake). body = the section texts joined, for GET /content/:key. ---
+    const page = (key: string, title: string, subtitle: string, sections: PageSection[]) => ({
+      key,
+      title,
+      subtitle,
+      sections,
+      body: sectionsToBody(sections),
+    });
     await tx.insert(pageContent).values([
-      { key: "home", title: "Welcome to Epikaizo Guesthouse", body: "Placeholder welcome text." },
-      { key: "about", title: "About us", body: "Placeholder story of the guesthouse." },
-      { key: "contact", title: "Contact us", body: "Placeholder address, phone and reception hours." },
+      page("home", "Welcome to Epikaizo Guesthouse", "Placeholder subtitle.", [{ heading: "", body: "Placeholder welcome text." }]),
+      page("about", "About us", "Placeholder subtitle.", [{ heading: "Our story", body: "Placeholder story of the guesthouse." }]),
+      page("rooms", "Accommodation", "Placeholder subtitle.", [{ heading: "Our rooms", body: "Placeholder rooms intro." }]),
+      page("restaurant", "Restaurant", "Placeholder subtitle.", [{ heading: "Our kitchen", body: "Placeholder restaurant intro." }]),
+      page("events", "Meetings and events", "Placeholder subtitle.", [{ heading: "The hall", body: "Placeholder events intro." }]),
+      page("contact", "Contact us", "Placeholder subtitle.", [{ heading: "Find us", body: "Placeholder address, phone and reception hours." }]),
     ]);
+
+    // --- Website settings (dashboard Settings page). Placeholder values. ---
+    // Restaurant times match restaurant_settings above.
+    await tx.insert(siteSettings).values({ id: 1, data: DEFAULT_SETTINGS });
+
+    // --- Dev admin login (kept if it exists, password reset to the dev one) ---
+    const passwordHash = await bcrypt.hash(DEV_ADMIN_PASSWORD, 10);
+    await tx
+      .insert(adminUsers)
+      .values({ name: "Dev Admin", username: DEV_ADMIN_USERNAME, passwordHash, role: "manager" })
+      .onConflictDoUpdate({ target: adminUsers.username, set: { passwordHash, role: "manager" } });
   });
 
-  console.log("Seed complete: 3 room types, 6 amenities, 3 menu categories, 7 menu items, 3 pages.");
+  console.log("Seed complete: 3 room types, 5 setups, 6 amenities, 3 menu categories, 7 menu items, 6 pages, settings.");
+  console.log(`Dev admin login: ${DEV_ADMIN_USERNAME} / ${DEV_ADMIN_PASSWORD} (dev only)`);
 }
 
 seed()

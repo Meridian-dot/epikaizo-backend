@@ -161,7 +161,7 @@ Response `201`: `{ "reference": "EPK-T-4M8XZ", "status": "pending" }`. `409 unav
 
 ### `GET /content/:key` (Live)
 
-`key` is `home`, `about` or `contact`.
+`key` is `home`, `about`, `rooms`, `restaurant`, `events` or `contact`. `body` is every section's text joined with a blank line.
 
 ```json
 { "key": "about", "title": "About us", "body": "…", "updatedAt": "2026-11-24T10:18:39.790Z" }
@@ -171,7 +171,54 @@ Response `201`: `{ "reference": "EPK-T-4M8XZ", "status": "pending" }`. `409 unav
 
 Request: `{ "name": "…", "email": "…", "phone": "…", "message": "…" }`. Response `202`: `{ "sent": true }`.
 
-## Admin endpoints (Planned)
+## Public website endpoints (Live, branch `c/admin-api`)
+
+Same data as above, in the shapes the public website uses (`epikaizo-frontend/src/lib/types.ts`). Sent with `Cache-Control: no-store` so dashboard edits show on the next page load.
+
+| Path | Returns |
+| --- | --- |
+| `GET /public/rooms` | Active rooms with `totalUnits`, `sortOrder`, photos (with `sortOrder`) and active `setups` (`{ id, roomTypeId, name, maxGuests, pricePerNight, isActive, sortOrder, onRequestOnly }`) |
+| `GET /public/rooms/:slug` | One active room, same shape; 404 if hidden or unknown |
+| `GET /public/menu` | Categories with `sortOrder`; items with `categoryId`, `sortOrder`, `sideOptions` |
+| `GET /public/content/:key` | `{ key, title, body, subtitle, sections, updatedAt }` |
+| `GET /public/settings` | Contact details, check-in/out, restaurant hours, food-order times (built from the dashboard settings; three fields are placeholders) |
+
+## Admin endpoints
+
+All need a logged-in session: `POST /auth/login` sets an httpOnly cookie (`epk_session`, 7 days, SameSite=Lax, Secure in production). The dashboard calls the API through its own `/api` rewrite, so the cookie is first-party. Send requests with `credentials: "include"`. Shapes follow `web/types/api.ts` (Docking Spec v1.1). Errors use the shape above; 401 `not_logged_in`, 403 `forbidden`, 409 `conflict` / `not_empty` / `invalid_state`.
+
+### Live (branch `c/admin-api`)
+
+| Method and path | Role | Notes |
+| --- | --- | --- |
+| `POST /auth/login` | Public | Body `{ "username", "password" }` (`email` also accepted). Returns `{ "user": { id, name, username, role } }`. 401 `invalid_credentials` |
+| `POST /auth/logout` | Any | 204, clears the cookie and deletes the session |
+| `GET /auth/me` | Staff | `{ "user": ... }` |
+| `/admin/login`, `/admin/logout`, `/admin/me` | | Aliases of the three above |
+| `GET /admin/summary` | Staff | Counts for the dashboard home (orders are 0 until orders exist) |
+| `GET, POST /admin/rooms`; `GET, PATCH /admin/rooms/:id` | Staff | Includes hidden rooms. Body `{ name, description, totalUnits, amenityIds, isActive?, sortOrder? }`. Slug is made from the name on create and kept on rename |
+| `POST /admin/rooms/:id/setups`; `PATCH /admin/setups/:id` | Staff | `{ name, maxGuests, pricePerNight, onRequest, isActive?, sortOrder? }`. Updates `room_types.price_per_night` (cheapest active setup) and `max_guests` (largest) |
+| `GET, POST /admin/amenities` | Staff | |
+| `POST /admin/uploads` | Staff | Multipart, field `file`. JPEG, PNG or WebP, max 5 MB (checked by content). Saved in `api/uploads/` (gitignored), served at `GET /uploads/<name>`. Returns `{ url, width, height }`; `url` uses `PUBLIC_API_URL` (default `http://localhost:4000`) |
+| `GET /admin/photos?gallery=true`; `POST /admin/photos`; `PATCH, DELETE /admin/photos/:id`; `PUT /admin/photos/order` | Staff | Attach by URL: `{ url, alt, roomTypeId | menuItemId | isGallery }` |
+| `GET, POST /admin/menu/categories`; `PATCH, DELETE /admin/menu/categories/:id` | Staff | Delete refuses (409 `not_empty`) while dishes remain |
+| `GET /admin/menu/items?categoryId=`; `POST /admin/menu/items`; `PATCH, DELETE /admin/menu/items/:id` | Staff | Includes `sideOptions` |
+| `GET /admin/content`; `PUT /admin/content/:key` | Staff | Body `{ title, subtitle, sections: [{ heading, body }] }`; also updates the plain `body` column |
+| `GET /admin/settings` / `PUT /admin/settings` | Staff / Manager | Whole `SiteSettings` object. PUT also updates `restaurant_settings` |
+| `GET, POST /admin/users`; `PATCH, DELETE /admin/users/:id` | Manager | Can't delete yourself or the last manager |
+| `GET /admin/bookings/rooms`, `GET, PATCH /admin/bookings/rooms/:id` | Staff | List with filters; PATCH `{ action: confirm | decline | cancel }`. No guest email yet; `setup` is a placeholder until bookings store a setup |
+| `GET /admin/bookings/tables`, `PATCH /admin/bookings/tables/:id` | Staff | Same |
+| `GET, POST /admin/blocked-dates`; `DELETE /admin/blocked-dates/:id` | Staff | |
+| `GET /admin/orders` | Staff | Always an empty list for now |
+
+### Still to build
+
+- Cloud storage for photos before deploying to a host that wipes its disk.
+- Food orders (table, public `POST`, admin `PATCH /admin/orders/:id`).
+- Guest emails when a booking is decided; login rate limiting.
+
+### Original plan (for reference)
+
 
 All need a logged-in session (httpOnly cookie set by `POST /auth/login`). The frontend must send requests with `credentials: "include"`.
 

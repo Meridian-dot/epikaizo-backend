@@ -7,6 +7,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -42,10 +43,31 @@ const timestamps = {
 export const adminUsers = pgTable("admin_users", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  // Staff log in with a username (the dashboard asks for one). Email is optional.
+  username: text("username").notNull().unique(),
+  email: text("email").unique(),
   passwordHash: text("password_hash").notNull(),
   role: adminRole("role").notNull().default("staff"),
   ...timestamps,
+});
+
+// One row per logged-in browser. The cookie holds a random token;
+// only its SHA-256 hash is stored here, so a database leak can't be used to log in.
+export const adminSessions = pgTable("admin_sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => adminUsers.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamps.createdAt,
+});
+
+// Website settings the dashboard edits (contact details, hours, ordering).
+// One row only. Stored as JSON in the dashboard's SiteSettings shape.
+export const siteSettings = pgTable("site_settings", {
+  id: integer("id").primaryKey().default(1),
+  data: jsonb("data").notNull(),
+  updatedAt: timestamps.updatedAt,
 });
 
 // ---------- Rooms ----------
@@ -63,6 +85,24 @@ export const roomTypes = pgTable("room_types", {
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   ...timestamps,
+});
+
+// Ways a room type can be set up, each with its own price
+// (e.g. "Double" N$ 850, "Double + extra bed" N$ 1,050). This is where the owner sets prices.
+// room_types.price_per_night and max_guests are kept in step automatically:
+// the cheapest active setup's price, and the most guests any active setup allows.
+export const roomSetups = pgTable("room_setups", {
+  id: serial("id").primaryKey(),
+  roomTypeId: integer("room_type_id")
+    .notNull()
+    .references(() => roomTypes.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  maxGuests: integer("max_guests").notNull(),
+  pricePerNight: numeric("price_per_night", { precision: 10, scale: 2, mode: "number" }).notNull(),
+  // Shown on the website, but only booked by phone or in person.
+  onRequest: boolean("on_request").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 export const amenities = pgTable("amenities", {
@@ -104,6 +144,8 @@ export const menuItems = pgTable("menu_items", {
   dietaryTags: text("dietary_tags").array().notNull().default([]), // e.g. ["vegetarian"]
   isAvailable: boolean("is_available").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Choices the guest picks one of, e.g. ["Chips", "Pap", "Rice"]. Empty = no choice.
+  sideOptions: text("side_options").array().notNull().default([]),
   ...timestamps,
 });
 
@@ -198,9 +240,13 @@ export const tableBookings = pgTable(
 // ---------- Editable page text (home, about, contact) ----------
 
 export const pageContent = pgTable("page_content", {
-  key: text("key").primaryKey(), // "home" | "about" | "contact"
+  key: text("key").primaryKey(), // "home" | "about" | "rooms" | "restaurant" | "events" | "contact"
   title: text("title").notNull(),
+  // Plain-text version of the page (all sections joined). Kept for GET /content/:key.
   body: text("body").notNull(),
+  subtitle: text("subtitle").notNull().default(""),
+  // What the dashboard edits: [{ "heading": "...", "body": "..." }, ...]
+  sections: jsonb("sections").$type<{ heading: string; body: string }[]>().notNull().default([]),
   updatedAt: timestamps.updatedAt,
 });
 
@@ -210,6 +256,15 @@ export const roomTypesRelations = relations(roomTypes, ({ many }) => ({
   amenities: many(roomTypeAmenities),
   photos: many(photos),
   bookings: many(roomBookings),
+  setups: many(roomSetups),
+}));
+
+export const roomSetupsRelations = relations(roomSetups, ({ one }) => ({
+  roomType: one(roomTypes, { fields: [roomSetups.roomTypeId], references: [roomTypes.id] }),
+}));
+
+export const adminSessionsRelations = relations(adminSessions, ({ one }) => ({
+  user: one(adminUsers, { fields: [adminSessions.userId], references: [adminUsers.id] }),
 }));
 
 export const amenitiesRelations = relations(amenities, ({ many }) => ({

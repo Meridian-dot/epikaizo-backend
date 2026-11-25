@@ -31,6 +31,14 @@ npm run dev
 
 Check it works: open http://localhost:4000/health/db and http://localhost:4000/rooms.
 
+**PostgreSQL installed on Windows instead of Docker?** Create the same user and database once. It asks for the `postgres` password you chose when installing:
+
+```powershell
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -h localhost -c "CREATE ROLE epikaizo LOGIN PASSWORD 'epikaizo';" -c "CREATE DATABASE epikaizo OWNER epikaizo;"
+```
+
+**Admin dashboard (`web/`)**: once the API is running, `cd web`, `npm install`, copy `.env.example` to `.env.local`, run `npm run dev` and open http://localhost:3001/admin. `npm run db:seed` creates a DEV-ONLY login: username `admin`, password `epikaizo-dev-only` (set `ADMIN_SEED_PASSWORD` in `api/.env` to change it). Never use it on staging or production.
+
 ## API scripts (run inside `api/`)
 
 | Command | What it does |
