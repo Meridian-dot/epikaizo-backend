@@ -13,6 +13,7 @@ import { healthRouter } from "./routes/health.js";
 import { menuRouter } from "./routes/menu.js";
 import { publicRouter } from "./routes/public.js";
 import { roomsRouter } from "./routes/rooms.js";
+import { serveUploads } from "./lib/uploads.js";
 
 export function createApp() {
   const app = express();
@@ -26,6 +27,7 @@ export function createApp() {
   app.use("/rooms", roomsRouter);
   app.use("/menu", menuRouter);
   app.use("/content", contentRouter);
+  app.use("/uploads", ...serveUploads); // uploaded photos
   app.use("/public", publicRouter); // shapes for the public website
 
   // Admin login. /admin/login, /admin/logout and /admin/me are aliases of /auth/*.

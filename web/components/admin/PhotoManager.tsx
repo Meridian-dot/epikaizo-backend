@@ -9,7 +9,7 @@ import { errorMessage } from "@/lib/use-load";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Button, ErrorBox, Field, inputClass, Spinner } from "./ui";
 
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = 5 * 1024 * 1024; // same limit as the API
 const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
 
 type Props = {
@@ -38,7 +38,7 @@ export function PhotoManager({ photos, target, single, onChanged }: Props) {
     setError("");
     if (!f) return setFile(null);
     if (!ALLOWED.includes(f.type)) return setError("Please choose a JPEG, PNG or WebP photo.");
-    if (f.size > MAX_BYTES) return setError("This photo is bigger than 8 MB. Please choose a smaller one.");
+    if (f.size > MAX_BYTES) return setError("This photo is bigger than 5 MB. Please choose a smaller one.");
     setFile(f);
   }
 

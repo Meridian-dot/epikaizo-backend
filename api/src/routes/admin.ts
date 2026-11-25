@@ -2,9 +2,9 @@
 // Every route here needs a logged-in session (see middleware/auth.ts).
 // Response shapes follow web/types/api.ts (Docking Spec v1.1).
 //
-// Built: summary, rooms + setups + amenities, photos (by URL), menu, page content,
+// Built: summary, rooms + setups + amenities, photo upload + photos, menu, page content,
 //        settings, users, room/table bookings (list + confirm/decline/cancel), blocked dates.
-// Not built yet: file uploads (POST /admin/uploads -> 501) and food orders (no table yet;
+// Not built yet: food orders (no table yet;
 //        GET /admin/orders returns an empty list).
 import { Router } from "express";
 import { and, asc, count, desc, eq, gt, ilike, inArray, lt, lte, max, min, ne, or, sql, type SQL } from "drizzle-orm";
@@ -31,6 +31,7 @@ import { HttpError } from "../middleware/errors.js";
 import { requireManager, requireStaff } from "../middleware/auth.js";
 import { CONTENT_KEYS, sectionsToBody } from "../lib/content.js";
 import { DEFAULT_SETTINGS, SiteSettingsSchema } from "../lib/settings.js";
+import { deleteUploadedFile, uploadPhoto } from "../lib/uploads.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireStaff);
@@ -237,13 +238,11 @@ adminRouter.post("/amenities", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Photos. Files are not uploaded yet: attach a photo by its URL instead.
+// Photos: upload the file (POST /admin/uploads), then attach its URL (POST /admin/photos).
 // ---------------------------------------------------------------------------
 const toPhoto = (p: typeof photos.$inferSelect) => ({ id: p.id, url: p.url, alt: p.alt, sortOrder: p.sortOrder });
 
-adminRouter.post("/uploads", () => {
-  throw new HttpError(501, "not_built", "Photo upload isn't ready yet. Ask Dev B (needs file storage).");
-});
+adminRouter.post("/uploads", ...uploadPhoto);
 
 adminRouter.get("/photos", async (req, res) => {
   const { gallery } = z.object({ gallery: z.string().optional() }).parse(req.query);
@@ -267,7 +266,10 @@ adminRouter.post("/photos", async (req, res) => {
       ? eq(photos.menuItemId, body.menuItemId)
       : eq(photos.isGallery, true);
   // A menu item has at most one photo: replace the old one.
-  if (body.menuItemId) await db.delete(photos).where(eq(photos.menuItemId, body.menuItemId));
+  if (body.menuItemId) {
+    const old = await db.delete(photos).where(eq(photos.menuItemId, body.menuItemId)).returning();
+    for (const p of old) await deleteUploadedFile(p.url);
+  }
   const [{ n }] = await db.select({ n: count() }).from(photos).where(where);
   const [p] = await db
     .insert(photos)
@@ -299,7 +301,8 @@ adminRouter.patch("/photos/:id", async (req, res) => {
 });
 
 adminRouter.delete("/photos/:id", async (req, res) => {
-  await db.delete(photos).where(eq(photos.id, id(req.params)));
+  const [removed] = await db.delete(photos).where(eq(photos.id, id(req.params))).returning();
+  if (removed) await deleteUploadedFile(removed.url);
   res.status(204).end();
 });
 

@@ -199,6 +199,7 @@ All need a logged-in session: `POST /auth/login` sets an httpOnly cookie (`epk_s
 | `GET, POST /admin/rooms`; `GET, PATCH /admin/rooms/:id` | Staff | Includes hidden rooms. Body `{ name, description, totalUnits, amenityIds, isActive?, sortOrder? }`. Slug is made from the name on create and kept on rename |
 | `POST /admin/rooms/:id/setups`; `PATCH /admin/setups/:id` | Staff | `{ name, maxGuests, pricePerNight, onRequest, isActive?, sortOrder? }`. Updates `room_types.price_per_night` (cheapest active setup) and `max_guests` (largest) |
 | `GET, POST /admin/amenities` | Staff | |
+| `POST /admin/uploads` | Staff | Multipart, field `file`. JPEG, PNG or WebP, max 5 MB (checked by content). Saved in `api/uploads/` (gitignored), served at `GET /uploads/<name>`. Returns `{ url, width, height }`; `url` uses `PUBLIC_API_URL` (default `http://localhost:4000`) |
 | `GET /admin/photos?gallery=true`; `POST /admin/photos`; `PATCH, DELETE /admin/photos/:id`; `PUT /admin/photos/order` | Staff | Attach by URL: `{ url, alt, roomTypeId | menuItemId | isGallery }` |
 | `GET, POST /admin/menu/categories`; `PATCH, DELETE /admin/menu/categories/:id` | Staff | Delete refuses (409 `not_empty`) while dishes remain |
 | `GET /admin/menu/items?categoryId=`; `POST /admin/menu/items`; `PATCH, DELETE /admin/menu/items/:id` | Staff | Includes `sideOptions` |
@@ -212,7 +213,7 @@ All need a logged-in session: `POST /auth/login` sets an httpOnly cookie (`epk_s
 
 ### Still to build
 
-- `POST /admin/uploads` (returns 501 until file storage is chosen).
+- Cloud storage for photos before deploying to a host that wipes its disk.
 - Food orders (table, public `POST`, admin `PATCH /admin/orders/:id`).
 - Guest emails when a booking is decided; login rate limiting.
 
