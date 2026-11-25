@@ -1,14 +1,20 @@
 // Public room endpoints (read-only).
-//   GET /rooms        -> all active room types, with amenities and photos
-//   GET /rooms/:slug  -> one room type
+//   GET /rooms                                  -> all active room types, with amenities and photos
+//   GET /rooms/:slug                            -> one room type
+//   GET /rooms/:id/availability?from=&to=       -> rooms left on each night of a range
 import { Router } from "express";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import { photos, roomTypes } from "../db/schema.js";
+import { isIsoDate, nightsBetween, todayInWindhoek } from "../lib/dates.js";
 import { HttpError } from "../middleware/errors.js";
+import { getRoomAvailability } from "../services/availability.js";
 
 export const roomsRouter = Router();
+
+// The longest range the availability calendar can ask for in one request.
+const MAX_AVAILABILITY_NIGHTS = 90;
 
 type RoomWithDetails = Awaited<ReturnType<typeof findRooms>>[number];
 
@@ -42,6 +48,34 @@ roomsRouter.get("/", async (_req, res) => {
   const rooms = await findRooms();
   res.json(rooms.map(toPublicRoom));
 });
+
+// ---------- Availability ----------
+// Registered before "/:slug" so the two routes are easy to tell apart when reading.
+
+const AvailabilityParams = z.object({ id: z.coerce.number().int().positive() });
+
+const isoDate = z.string().refine(isIsoDate, "Must be a real date in the format YYYY-MM-DD");
+
+const AvailabilityQuery = z
+  .object({ from: isoDate, to: isoDate })
+  .refine((q) => q.from < q.to, { message: "'to' must be after 'from'", path: ["to"] })
+  .refine((q) => q.from >= todayInWindhoek(), { message: "'from' cannot be in the past", path: ["from"] })
+  .refine((q) => nightsBetween(q.from, q.to) <= MAX_AVAILABILITY_NIGHTS, {
+    message: `Ask for at most ${MAX_AVAILABILITY_NIGHTS} nights at a time`,
+    path: ["to"],
+  });
+
+roomsRouter.get("/:id/availability", async (req, res) => {
+  const { id } = AvailabilityParams.parse(req.params);
+  const { from, to } = AvailabilityQuery.parse(req.query);
+
+  const result = await getRoomAvailability(db, id, from, to);
+  if (!result) throw new HttpError(404, "not_found", "Room not found");
+
+  res.json({ roomTypeId: result.roomTypeId, from, to, nights: result.nights });
+});
+
+// ---------- One room ----------
 
 const SlugParams = z.object({ slug: z.string().regex(/^[a-z0-9-]+$/) });
 
